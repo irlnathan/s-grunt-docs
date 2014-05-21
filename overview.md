@@ -134,15 +134,7 @@ I'll exit Sails by typing `control-c`.  Next I'll execute the following Grunt co
 
 Recall that `dev` is an argument I can pass via the _task_ (e.g. _clean:dev_).  If I go back and look at the `.tmp` folder, `public` and its sub folders no longer exist, they've been "cleaned".  What I'm trying to show here is that even though Sails provided the Grant _task_ you don't need Sails to execute them.  They execute from command-line like any other plain-old grunt task.
 
-Sails provides ways for you to link different Sails triggers with specific Grunt tasks.  For example:
-
-<img src="http://i.imgur.com/93N4KJw.jpg" />
-
-###Executing a Grunt _task_ based upon a Sails _trigger_ 
-
-You may be wondering why there's a `register` folder as well as the purpose of `default.js`, `prod.js`, `build.js`, and `buildProd.js` within it?
-
-Earlier I executed the `clean` task from the command line using `$ grunt clean:dev`.  Therefore, simply by configuring the `clean` task in `tasks/config/clean.js`, I can access it via Grunt at the command-line.  
+###Grouping multiple _tasks_ together
 
 Grunt also provides a way to group multiple tasks together as part of another **named** _task_.  Let's take a look at `default.js` located in the `tasks/register/default.js` folder:
 
@@ -156,25 +148,28 @@ So `default.js` creates another _task_, the **default** _task_, which triggers o
 
 <img src="http://i.imgur.com/l4BthaG.jpg" />
 
-> **Notice:** because the _watch_ task as no dependent tasks, it links directly to the task configuration file (e.g. watch.js) and not a separate register file.	
+> **Note:** because the _watch_ task as no dependent tasks, it links directly to the task configuration file (e.g. watch.js) and not a separate register file.  
+
+Sails provides the means for you to link specific Grunt _tasks_ with different Sails triggers. 
+
+###How Sail's _triggers_ execute Grunt _tasks_
+
+There are four Sail's _triggers_ each of which executes a specific Grunt _task_:
+
+<img src="http://i.imgur.com/93N4KJw.jpg" />
 
 These **registered** _tasks_ can be found in the `.\tasks\register` folder.
 
-###What is sails-linker and how does it work with pipeline.js?
+###Which _tasks_ are executed when Sails starts via `$ sails lift`?
 
-**Sails-linker** automatically inserts tags (e.g. `<script>`, `<link>`, etc.) into an html file.  **Pipeline.js** allows you to configure the order in which your css, javascript, and template files should be compiled and linked (via _Sails-linker) from your views and static HTML files.
+<img src="http://i.imgur.com/jrpKd2p.jpg" />
 
-###What _tasks_ are executed when Sails starts via `$ sails lift`?
+As we've already seen, `$ sails lift`, triggers the **default** _task_.  The `default` _task_ in turn executes many other tasks grouped by `compileAssets`, `linkAssets`, and `watcher` tasks. 
 
-Let's take a closer look at the tasks that are triggered when Sails starts (e.g. `$ sails lift`).
-
-<img src="http://i.imgur.com/Sqcqh25.jpg" />
-
-As we've already seen, `$ sails lift`, triggers the **default** _task_.  The `default` _task_ in turn executes three other tasks, the first being `compileAssets`:
+###The compileAssets _task_
 
 <img src="http://i.imgur.com/WBw9C62.jpg" />
 
-###>The compileAssets _task_
 
 The `compileAssets` _task_ executes five additional tasks:
 
@@ -193,7 +188,7 @@ Which templates get pre-compiled is configured in the **pipeline.js** file.
 
 ####less:dev _task_
 
-Compiles LESS files into CSS. Only the assets/styles/importer.less is compiled. This allows you to control the ordering yourself, i.e. import your dependencies, mixins, variables, resets, etc. before other stylesheets.
+Compiles LESS files into CSS. Only the `assets/styles/importer.less` is compiled. This allows you to control the ordering yourself, i.e. import your dependencies, mixins, variables, resets, etc. before other stylesheets.
 
 ####copy:dev _task_
 
@@ -203,12 +198,33 @@ Copies all directories and files, exept coffescript and less files, from the sai
 
 Compiles coffeeScript files from assest/js/ into Javascript and places them into .tmp/public/js/ directory.
 
-<img src="http://i.imgur.com/GYImd1Z.jpg" />
-###>The linkAssets _task_
+###The linkAssets _task_
 
-The `linkAssets` _task_ executes six additional tasks:
+<img src="http://i.imgur.com/GYImd1Z.jpg" />
+
+The `linkAssets` _task_ executes six additional tasks that work heavily with `sails-linker` and `pipeline.js`
+
+**Sails-linker** automatically inserts tags (e.g. `<script>`, `<link>`, etc.) into mark-up files (e.g. .html, .ejs, .jade).  **Pipeline.js** allows you to configure the order in which your css, javascript, and template files should be compiled and linked (via _Sails-linker_) from your views and static HTML files.
 
 ####sails-linker:devJS _task_
+
+```javascript
+...
+devJs: {
+      options: {
+        startTag: '<!--SCRIPTS-->',
+        endTag: '<!--SCRIPTS END-->',
+        fileTmpl: '<script src="%s"></script>',
+        appRoot: '.tmp/public'
+      },
+      files: {
+        '.tmp/public/**/*.html': require('../pipeline').jsFilesToInject,
+        'views/**/*.html': require('../pipeline').jsFilesToInject,
+        'views/**/*.ejs': require('../pipeline').jsFilesToInject
+      }
+},
+...
+```
 
 This task automatically injects javascript files via `<script>` tags into various `.html` and `.ejs` files.  As with all tasks sails-linker:devJS can be modified to meet your specific needs.
 
@@ -221,10 +237,44 @@ By default, this task effects all `.html` files located in:
 
 `.html` and/or `.ejs` files with `<!--SCRIPTS-->` `<!--SCRIPTS END-->` tags will have javascript `src` links injected into them.
 
-Sails-linker will use the order of the javascript files found in the `tasks/pipeline.js` file.
+Sails-linker will use the order of the javascript files found in the `tasks/pipeline.js` file:
+
+```javascript
+...
+var jsFilesToInject = [
+
+  // Dependencies like sails.io.js, jQuery, or Angular
+  // are brought in here
+  'js/dependencies/**/*.js',
+
+  // All of the rest of your client-side js files
+  // will be injected here in no particular order.
+  'js/**/*.js'
+];
+...
+```
 > By default, javascript files found in `/assets/js/dependencies/` and its sub-folders is injected first thereafter javascript files found in `/assets/js` and its sub-folders is injected.  You can also "hard-code" any `script` tags you prefer and `sails-linker` will put any remaining javascript files below those tags.
 
 ####sails-linker:devStyles _task_
+
+```javascript
+...
+devStyles: {
+      options: {
+        startTag: '<!--STYLES-->',
+        endTag: '<!--STYLES END-->',
+        fileTmpl: '<link rel="stylesheet" href="%s">',
+        appRoot: '.tmp/public'
+      },
+
+      files: {
+        '.tmp/public/**/*.html': require('../pipeline').cssFilesToInject,
+        'views/**/*.html': require('../pipeline').cssFilesToInject,
+        'views/**/*.ejs': require('../pipeline').cssFilesToInject
+      }
+},
+...
+```
 
 This task automatically injects css files via `<link>` tags into various `.html` and `.ejs` files.  As with all tasks sails-linker:devStyles can be modified to meet your specific needs.
 
@@ -238,9 +288,35 @@ By default, this task effects all `.html` files located in:
 `.html` and/or `.ejs` files with `<!--STYLES-->` `<!--STYLES END-->` tags will have css `href` links injected into them.
 
 Sails-linker will use the order of the css files found in the `tasks/pipeline.js` file.
+
+```javascript
+...
+var cssFilesToInject = [
+  'styles/**/*.css'
+];
+...
+```
 > By default, css files found in `/assets/styles` and its sub-folders is injected first.  You can "hard-code" any styles you prefer and `sails-linker` will put any remaining css files it finds below.
 
 ####sails-linker:devTpl _task_
+
+```javascript
+...
+devTpl: {
+      options: {
+        startTag: '<!--TEMPLATES-->',
+        endTag: '<!--TEMPLATES END-->',
+        fileTmpl: '<script type="text/javascript" src="%s"></script>',
+        appRoot: '.tmp/public'
+      },
+      files: {
+        '.tmp/public/index.html': ['.tmp/public/jst.js'],
+        'views/**/*.html': ['.tmp/public/jst.js'],
+        'views/**/*.ejs': ['.tmp/public/jst.js']
+      }
+},
+...
+```
 
 This task automatically injects compiled JST template files via `<script>` tags into various `.html` and `.ejs` files.
 >**Remember:** the templates were compiled earlier into functions in a new `jst.js` file.
@@ -274,6 +350,95 @@ This task automatically injects ASK MIKE ABOUT THIS
 
 This task automatically injects ASK MIKE ABOUT THIS
 
+###The watch _task_
 
+<img src="http://i.imgur.com/l4BthaG.jpg" />
 
+Unlike the `compileAssets` and `linkAssets` _tasks_, the **watch** _task_ consists of the configuration of a _plugin_ (e.g. the **watch** _plugin_).  
+
+The **watch** _task_ looks for changes in files in a given directory or set of directories. If a change is detected, the _task_ triggers two other tasks-- **syncAssets** (discussed below) and **linkAssets** (discussed above).
+
+###The syncAssets _task_
+
+<img src="http://i.imgur.com/nG1UomJ.jpg" />
+
+The compileAssets task executes four additional tasks:
+
+####jst:dev _task_
+
+Precompiles Underscore templates to a .jst file. (i.e. it takes HTML template files and turns them into tiny javascript functions). 
+
+>This can speed up template rendering on the client, and reduce bandwidth usage.
+
+Which templates get pre-compiled is configured in the **pipeline.js** file.
+>By default, any .html files contained in `gruntExample/assets/templates` will be pre-compiled.
+
+####less:dev _task_
+
+```javascript
+...
+grunt.config.set('less', {
+    dev: {
+      files: [{
+        expand: true,
+        cwd: 'assets/styles/',
+        src: ['importer.less'],
+        dest: '.tmp/public/styles/',
+        ext: '.css'
+      }]
+    }
+});
+...
+```
+
+Compiles LESS files into CSS. Only the `assets/styles/importer.less` is compiled. This allows you to control the ordering yourself, i.e. import your dependencies, mixins, variables, resets, etc. before other stylesheets.
+
+####sync:dev _task_
+
+```javascript
+...
+grunt.config.set('sync', {
+    dev: {
+      files: [{
+        cwd: './assets',   
+        src: ['**/*.!(coffee)'],
+        dest: '.tmp/public'
+      }]
+    }
+});
+...
+```
+
+####coffee:dev _task_
+
+```javascript
+...
+grunt.config.set('coffee', {
+    dev: {
+      options: {
+        bare: true,
+        sourceMap: true,
+        sourceRoot: './'
+      },
+      files: [{
+        expand: true,
+        cwd: 'assets/js/',
+        src: ['**/*.coffee'],
+        dest: '.tmp/public/js/',
+        ext: '.js'
+      }, {
+        expand: true,
+        cwd: 'assets/js/',
+        src: ['**/*.coffee'],
+        dest: '.tmp/public/js/',
+        ext: '.js'
+      }]
+    }
+  });
+  ...
+  ```
+
+Compiles coffeeScript files from `assest/js/` into Javascript and places them into `.tmp/public/js/` directory.
+
+A grunt task to keep directories in sync. It is very similar to grunt-contrib-copy but tries to copy only those files that have actually changed. It specifically synchronizes files from the `assets/` folder to `.tmp/public/`, overwriting anything that's already there.
 
